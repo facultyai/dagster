@@ -157,10 +157,6 @@ def test_two_downstream_assets_pipeline():
     ]
 
 
-def test_multi_asset_internal_dependency():
-    pass
-
-
 def test_cross_pipeline_asset_dependency():
     @asset
     def asset1():
