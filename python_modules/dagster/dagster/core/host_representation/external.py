@@ -1,10 +1,11 @@
 import warnings
 from collections import OrderedDict
-from typing import Optional, Sequence
+from typing import TYPE_CHECKING, Optional, Sequence
 
 from dagster import check
 from dagster.core.definitions.events import AssetKey
 from dagster.core.definitions.run_request import InstigatorType
+from dagster.core.definitions.schedule_definition import ScheduleStatus
 from dagster.core.definitions.sensor_definition import DEFAULT_SENSOR_DAEMON_INTERVAL
 from dagster.core.execution.plan.handle import ResolvedFromDynamicStepHandle, StepHandle
 from dagster.core.origin import PipelinePythonOrigin
@@ -23,6 +24,9 @@ from .external_data import (
 from .handle import JobHandle, PartitionSetHandle, PipelineHandle, RepositoryHandle
 from .pipeline_index import PipelineIndex
 from .represented import RepresentedPipeline
+
+if TYPE_CHECKING:
+    from dagster.core.scheduler.instigation import InstigatorState
 
 
 class ExternalRepository:
@@ -486,20 +490,39 @@ class ExternalSchedule:
     def get_external_origin_id(self):
         return self.get_external_origin().get_id()
 
-    # ScheduleState that represents the state of the schedule
-    # when there is no row in the schedule DB (for example, when
-    # the schedule is first created in code)
-    def get_default_instigation_state(self):
+    @property
+    def default_status(self) -> ScheduleStatus:
+        return (
+            self._external_schedule_data.default_status
+            if self._external_schedule_data.default_status
+            else ScheduleStatus.STOPPED
+        )
+
+    def get_current_instigator_state(self, stored_state: Optional["InstigatorState"]):
         from dagster.core.scheduler.instigation import (
             InstigatorState,
             InstigatorStatus,
             ScheduleInstigatorData,
         )
 
+        if stored_state:
+            # Ignore AUTOMATICALLY_RUNNING states in the DB if the default status
+            # isn't ScheduleStatus.RUNNING - this would indicate that the schedule's
+            # default has changed
+            if (
+                stored_state.status != InstigatorStatus.AUTOMATICALLY_RUNNING
+                or self.default_status == ScheduleStatus.RUNNING
+            ):
+                return stored_state
+
         return InstigatorState(
             self.get_external_origin(),
             InstigatorType.SCHEDULE,
-            InstigatorStatus.STOPPED,
+            (
+                InstigatorStatus.AUTOMATICALLY_RUNNING
+                if self.default_status == ScheduleStatus.RUNNING
+                else InstigatorStatus.STOPPED
+            ),
             ScheduleInstigatorData(self.cron_schedule, start_timestamp=None),
         )
 
