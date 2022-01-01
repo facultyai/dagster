@@ -6,7 +6,7 @@ from dagster import check
 from dagster.core.definitions.events import AssetKey
 from dagster.core.definitions.run_request import InstigatorType
 from dagster.core.definitions.schedule_definition import ScheduleStatus
-from dagster.core.definitions.sensor_definition import DEFAULT_SENSOR_DAEMON_INTERVAL
+from dagster.core.definitions.sensor_definition import DEFAULT_SENSOR_DAEMON_INTERVAL, SensorStatus
 from dagster.core.execution.plan.handle import ResolvedFromDynamicStepHandle, StepHandle
 from dagster.core.origin import PipelinePythonOrigin
 from dagster.core.snap import ExecutionPlanSnapshot
@@ -546,6 +546,10 @@ class ExternalSensor:
         return self._external_sensor_data.name
 
     @property
+    def handle(self):
+        return self._handle
+
+    @property
     def pipeline_name(self):
         target = self._get_single_target()
         return target.pipeline_name if target else None
@@ -594,23 +598,45 @@ class ExternalSensor:
     def get_external_origin_id(self):
         return self.get_external_origin().get_id()
 
-    def get_default_instigation_state(self):
+    def get_current_instigator_state(self, stored_state: Optional["InstigatorState"]):
         from dagster.core.scheduler.instigation import (
             InstigatorState,
             InstigatorStatus,
             SensorInstigatorData,
         )
 
+        if stored_state:
+            # Ignore AUTOMATICALLY_RUNNING states in the DB if the default status
+            # isn't SensorStatus.RUNNING - this would indicate that the schedule's
+            # default has changed
+            if (
+                stored_state.status != InstigatorStatus.AUTOMATICALLY_RUNNING
+                or self.default_status == SensorStatus.RUNNING
+            ):
+                return stored_state
+
         return InstigatorState(
             self.get_external_origin(),
             InstigatorType.SENSOR,
-            InstigatorStatus.STOPPED,
+            (
+                InstigatorStatus.AUTOMATICALLY_RUNNING
+                if self.default_status == SensorStatus.RUNNING
+                else InstigatorStatus.STOPPED
+            ),
             SensorInstigatorData(min_interval=self.min_interval_seconds),
         )
 
     @property
     def metadata(self):
         return self._external_sensor_data.metadata
+
+    @property
+    def default_status(self) -> SensorStatus:
+        return (
+            self._external_sensor_data.default_status
+            if self._external_sensor_data
+            else ScheduleStatus.STOPPED
+        )
 
 
 class ExternalPartitionSet:
