@@ -593,8 +593,10 @@ def external_asset_graph_from_defs(
                         deps[asset_key][input_name] = ExternalAssetDependency(
                             upstream_asset_key=upstream_asset_key, input_name=input_name
                         )
-                        dep_by[upstream_asset_key][input_name] = ExternalAssetDependedBy(
-                            downstream_asset_key=asset_key, input_name=input_name
+                        dep_by[upstream_asset_key].append(
+                            ExternalAssetDependedBy(
+                                downstream_asset_key=asset_key, input_name=input_name
+                            )
                         )
 
                 # if not specified, assume it does not depend on any other outputs
