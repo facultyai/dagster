@@ -1084,6 +1084,27 @@ class DagsterInstance:
         return self._run_storage.get_run_groups(filters=filters, cursor=cursor, limit=limit)
 
     @traced
+    def get_runs_by_job(
+        self,
+        limit: int = 1,
+        filters: Optional[PipelineRunsFilter] = None,
+        job_names: Optional[Sequence[str]] = None,
+    ) -> Mapping[str, Sequence[PipelineRun]]:
+        return self._run_storage.get_runs_by_job(limit=limit, filters=filters, job_names=job_names)
+
+    @traced
+    def get_runs_by_tag(
+        self,
+        tag_key: str,
+        limit: int = 1,
+        filters: Optional[PipelineRunsFilter] = None,
+        tag_values: Optional[Sequence[str]] = None,
+    ) -> Mapping[str, Sequence[PipelineRun]]:
+        return self._run_storage.get_runs_by_tag(
+            tag_key=tag_key, limit=limit, filters=filters, tag_values=tag_values
+        )
+
+    @traced
     def get_run_records(
         self,
         filters: PipelineRunsFilter = None,
