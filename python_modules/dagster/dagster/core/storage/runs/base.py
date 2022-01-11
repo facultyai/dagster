@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Dict, Iterable, List, Optional, Set, Tuple, Union
+from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple, Union
 
 from dagster.core.events import DagsterEvent
 from dagster.core.execution.backfill import BulkActionStatus, PartitionBackfill
@@ -122,6 +122,25 @@ class RunStorage(ABC, MayHaveInstanceWeakref):
         # interface rather than burying them deeply paginated down. Note also that this query can
         # return no more run groups than there are runs in an equivalent call to get_runs, and no
         # more than 2x total instances of PipelineRun.
+
+    @abstractmethod
+    def get_runs_by_job(
+        self,
+        limit: int = 1,
+        filters: Optional[PipelineRunsFilter] = None,
+        job_names: Optional[Sequence[str]] = None,
+    ) -> Mapping[str, Sequence[PipelineRun]]:
+        pass
+
+    @abstractmethod
+    def get_runs_by_tag(
+        self,
+        tag_key: str,
+        limit: int = 1,
+        filters: Optional[PipelineRunsFilter] = None,
+        tag_values: Optional[Sequence[str]] = None,
+    ) -> Mapping[str, Sequence[PipelineRun]]:
+        pass
 
     @abstractmethod
     def get_run_by_id(self, run_id: str) -> Optional[PipelineRun]:

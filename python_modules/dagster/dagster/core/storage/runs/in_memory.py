@@ -1,5 +1,5 @@
 from collections import OrderedDict, defaultdict
-from typing import Callable, Dict, Iterable, List, Optional, Set, Tuple, Union
+from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple, Union
 
 from dagster import check
 from dagster.core.errors import (
@@ -16,10 +16,40 @@ from dagster.core.snap import (
     create_pipeline_snapshot_id,
 )
 from dagster.daemon.types import DaemonHeartbeat
-from dagster.utils import frozendict, merge_dicts
+from dagster.utils import frozendict, frozenlist, merge_dicts
 
 from ..pipeline_run import PipelineRun, PipelineRunsFilter, RunRecord
 from .base import RunStorage
+
+
+def build_run_filter(filters: Optional[PipelineRunsFilter]) -> Callable[[PipelineRun], bool]:
+    def _filter(run: PipelineRun) -> bool:
+        if not filters:
+            return True
+
+        if filters.run_ids and run.run_id not in filters.run_ids:
+            return False
+
+        if filters.statuses and run.status not in filters.statuses:
+            return False
+
+        if filters.pipeline_name and filters.pipeline_name != run.pipeline_name:
+            return False
+
+        if filters.mode and filters.mode != run.mode:
+            return False
+
+        if filters.tags and not all(
+            run.tags.get(key) == value for key, value in filters.tags.items()
+        ):
+            return False
+
+        if filters.snapshot_id and filters.snapshot_id != run.pipeline_snapshot_id:
+            return False
+
+        return True
+
+    return _filter
 
 
 class InMemoryRunStorage(RunStorage):
@@ -91,30 +121,7 @@ class InMemoryRunStorage(RunStorage):
         if not filters:
             return self._slice(list(self._runs.values())[::-1], cursor, limit)
 
-        def run_filter(run):
-            if filters.run_ids and run.run_id not in filters.run_ids:
-                return False
-
-            if filters.statuses and run.status not in filters.statuses:
-                return False
-
-            if filters.pipeline_name and filters.pipeline_name != run.pipeline_name:
-                return False
-
-            if filters.mode and filters.mode != run.mode:
-                return False
-
-            if filters.tags and not all(
-                run.tags.get(key) == value for key, value in filters.tags.items()
-            ):
-                return False
-
-            if filters.snapshot_id and filters.snapshot_id != run.pipeline_snapshot_id:
-                return False
-
-            return True
-
-        matching_runs = list(filter(run_filter, list(self._runs.values())[::-1]))
+        matching_runs = list(filter(build_run_filter(filters), list(self._runs.values())[::-1]))
         return self._slice(matching_runs, cursor=cursor, limit=limit)
 
     def get_runs_count(self, filters: PipelineRunsFilter = None) -> int:
@@ -158,6 +165,39 @@ class InMemoryRunStorage(RunStorage):
         ascending: bool = False,
     ) -> List[RunRecord]:
         raise NotImplementedError("In memory run storage does not track timestamp yet.")
+
+    def get_runs_by_job(
+        self,
+        limit: int = 1,
+        filters: Optional[PipelineRunsFilter] = None,
+        job_names: Optional[Sequence[str]] = None,
+    ) -> Mapping[str, Sequence[PipelineRun]]:
+        matching_runs = list(filter(build_run_filter(filters), list(self._runs.values())[::-1]))
+        by_job: Dict[str, List[PipelineRun]] = defaultdict(list)
+        for run in matching_runs:
+            if job_names and run.pipeline_name not in job_names:
+                continue
+            if len(by_job[run.pipeline_name]) >= limit:
+                continue
+            by_job[run.pipeline_name].append(run)
+        return frozendict({k: frozenlist(v) for k, v in by_job.items()})
+
+    def get_runs_by_tag(
+        self,
+        tag_key: str,
+        limit: int = 1,
+        filters: Optional[PipelineRunsFilter] = None,
+        tag_values: Optional[Sequence[str]] = None,
+    ) -> Mapping[str, Sequence[PipelineRun]]:
+        matching_runs = list(filter(build_run_filter(filters), list(self._runs.values())[::-1]))
+        by_tag: Dict[str, List[PipelineRun]] = defaultdict(list)
+        for run in matching_runs:
+            if tag_key not in run.tags or len(by_tag[run.tags.get(tag_key)]) >= limit:
+                continue
+            if tag_values and run.tags.get(tag_key) not in tag_values:
+                continue
+            by_tag[run.tags.get(tag_key)].append(run)
+        return frozendict({k: frozenlist(v) for k, v in by_tag.items()})
 
     def get_run_tags(self) -> List[Tuple[str, Set[str]]]:
         all_tags = defaultdict(set)

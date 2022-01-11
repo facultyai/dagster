@@ -1165,3 +1165,62 @@ class TestRunStorage:
         storage.add_snapshot(ep_snapshot, snapshot_id=new_ep_snapshot_id)
         assert not storage.has_snapshot(ep_snapshot_id)
         assert storage.has_snapshot(new_ep_snapshot_id)
+
+    def test_by_job(self, storage):
+        def _add_run(job_name, tags=None):
+            return storage.add_run(
+                TestRunStorage.build_run(
+                    pipeline_name=job_name, run_id=make_new_run_id(), tags=tags
+                )
+            )
+
+        _a_one = _add_run("a_pipeline", tags={"a": "A"})
+        a_two = _add_run("a_pipeline", tags={"a": "A"})
+        _b_one = _add_run("b_pipeline", tags={"a": "A"})
+        b_two = _add_run("b_pipeline", tags={"a": "A"})
+        c_one = _add_run("c_pipeline", tags={"a": "A"})
+        c_two = _add_run("c_pipeline", tags={"a": "B"})
+
+        runs_by_job = storage.get_runs_by_job()
+        assert set(runs_by_job.keys()) == {"a_pipeline", "b_pipeline", "c_pipeline"}
+        assert [run.run_id for run in runs_by_job.get("a_pipeline")] == [a_two.run_id]
+        assert [run.run_id for run in runs_by_job.get("b_pipeline")] == [b_two.run_id]
+        assert [run.run_id for run in runs_by_job.get("c_pipeline")] == [c_two.run_id]
+
+        # fetch with a runs filter applied
+        runs_by_job = storage.get_runs_by_job(filters=PipelineRunsFilter(tags={"a": "A"}))
+        assert set(runs_by_job.keys()) == {"a_pipeline", "b_pipeline", "c_pipeline"}
+        assert [run.run_id for run in runs_by_job.get("a_pipeline")] == [a_two.run_id]
+        assert [run.run_id for run in runs_by_job.get("b_pipeline")] == [b_two.run_id]
+        assert [run.run_id for run in runs_by_job.get("c_pipeline")] == [c_one.run_id]
+
+    def test_by_tag(self, storage):
+        def _add_run(job_name, tags=None):
+            return storage.add_run(
+                TestRunStorage.build_run(
+                    pipeline_name=job_name, run_id=make_new_run_id(), tags=tags
+                )
+            )
+
+        _one = _add_run("a", tags={"a": "1"})
+        _two = _add_run("a", tags={"a": "2"})
+        three = _add_run("a", tags={"a": "3"})
+        _none = _add_run("a")
+        b = _add_run("b", tags={"a": "4"})
+        one = _add_run("a", tags={"a": "1"})
+        two = _add_run("a", tags={"a": "2"})
+
+        runs_by_tag = storage.get_runs_by_tag(tag_key="a")
+        assert set(runs_by_tag.keys()) == {"1", "2", "3", "4"}
+        assert [run.run_id for run in runs_by_tag.get("1")] == [one.run_id]
+        assert [run.run_id for run in runs_by_tag.get("2")] == [two.run_id]
+        assert [run.run_id for run in runs_by_tag.get("3")] == [three.run_id]
+        assert [run.run_id for run in runs_by_tag.get("4")] == [b.run_id]
+
+        runs_by_tag = storage.get_runs_by_tag(
+            tag_key="a", filters=PipelineRunsFilter(pipeline_name="a")
+        )
+        assert set(runs_by_tag.keys()) == {"1", "2", "3"}
+        assert [run.run_id for run in runs_by_tag.get("1")] == [one.run_id]
+        assert [run.run_id for run in runs_by_tag.get("2")] == [two.run_id]
+        assert [run.run_id for run in runs_by_tag.get("3")] == [three.run_id]

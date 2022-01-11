@@ -4,7 +4,7 @@ from abc import abstractmethod
 from collections import defaultdict
 from datetime import datetime
 from enum import Enum
-from typing import Callable, Dict, Iterable, List, Optional, Set, Tuple, Union
+from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple, Union
 
 import pendulum
 import sqlalchemy as db
@@ -320,6 +320,88 @@ class SqlRunStorage(RunStorage):  # pylint: disable=no-init
             )
             for row in rows
         ]
+
+    def get_runs_by_job(
+        self,
+        limit: int = 1,
+        filters: Optional[PipelineRunsFilter] = None,
+        job_names: Optional[Sequence[str]] = None,
+    ) -> Mapping[str, Sequence[PipelineRun]]:
+        subquery = db.select(
+            RunsTable.c.pipeline_name,
+            RunsTable.c.run_body,
+            db.func.rank()
+            .over(order_by=RunsTable.c.id.desc(), partition_by=RunsTable.c.pipeline_name)
+            .label("rank"),
+        )
+        if filters and filters.tags:
+            subquery = subquery.select_from(
+                RunsTable.join(RunTagsTable, RunsTable.c.run_id == RunTagsTable.c.run_id)
+            )
+        else:
+            subquery = subquery.select_from(RunsTable)
+
+        if filters:
+            subquery = self._add_filters_to_query(subquery, filters)
+        if job_names:
+            subquery = subquery.filter(RunsTable.c.pipeline_name.in_(job_names))
+        subquery = subquery.subquery()
+
+        query = db.select(subquery).filter(subquery.c.rank <= limit)
+        rows = self.fetchall(query)
+        result = defaultdict(list)
+        for r in rows:
+            result[r[0]].append(tuple([deserialize_as(r[1], PipelineRun), r[2]]))
+
+        runs_by_pipeline = {}
+        for pipeline_name, pipeline_results in result.items():
+            runs_by_pipeline[pipeline_name] = [
+                item[0] for item in sorted(pipeline_results, key=lambda item: item[1])
+            ]
+
+        return runs_by_pipeline
+
+    def get_runs_by_tag(
+        self,
+        tag_key: str,
+        limit: int = 1,
+        filters: Optional[PipelineRunsFilter] = None,
+        tag_values: Optional[Sequence[str]] = None,
+    ) -> Mapping[str, Sequence[PipelineRun]]:
+        subquery = (
+            db.select(
+                RunsTable.c.run_body,
+                db.func.rank()
+                .over(order_by=RunsTable.c.id.desc(), partition_by=RunTagsTable.c.value)
+                .label("rank"),
+            )
+            .select_from(RunsTable.join(RunTagsTable, RunsTable.c.run_id == RunTagsTable.c.run_id))
+            .where(RunTagsTable.c.key == tag_key)
+        )
+
+        if tag_values:
+            subquery = subquery.where(RunTagsTable.c.value.in_(tag_values))
+
+        if filters:
+            subquery = self._add_filters_to_query(subquery, filters)
+
+        subquery = subquery.subquery()
+
+        query = db.select(subquery).filter(subquery.c.rank <= limit)
+        rows = self.fetchall(query)
+        result = defaultdict(list)
+        for (body, rank) in rows:
+            run = deserialize_as(body, PipelineRun)
+            tag_value = run.tags.get(tag_key)
+            result[tag_value].append(tuple([run, rank]))
+
+        runs_by_tag = {}
+        for tag_value, run_results in result.items():
+            runs_by_tag[tag_value] = [
+                item[0] for item in sorted(run_results, key=lambda item: item[1])
+            ]
+
+        return runs_by_tag
 
     def get_run_tags(self) -> List[Tuple[str, Set[str]]]:
         result = defaultdict(set)
