@@ -177,6 +177,7 @@ def multi_asset(
     non_argument_deps: Optional[Set[AssetKey]] = None,
     description: Optional[str] = None,
     required_resource_keys: Optional[Set[str]] = None,
+    compute_kind=None,
 ) -> Callable[[Callable[..., Any]], AssetsDefinition]:
     """Create a combined definition of multiple assets that are computed using the same op and same
     upstream assets.
@@ -209,6 +210,7 @@ def multi_asset(
             },  # convert Mapping object to dict
             out=outs,
             required_resource_keys=required_resource_keys,
+            tags={"kind": compute_kind} if compute_kind else None,
         )(fn)
 
         return AssetsDefinition(
