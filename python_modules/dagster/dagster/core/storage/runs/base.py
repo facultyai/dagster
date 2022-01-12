@@ -1,11 +1,11 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple, Union
+from typing import Callable, Dict, Iterable, List, Optional, Set, Tuple, Union
 
 from dagster.core.events import DagsterEvent
 from dagster.core.execution.backfill import BulkActionStatus, PartitionBackfill
 from dagster.core.instance import MayHaveInstanceWeakref
 from dagster.core.snap import ExecutionPlanSnapshot, PipelineSnapshot
-from dagster.core.storage.pipeline_run import PipelineRun, PipelineRunsFilter, RunRecord
+from dagster.core.storage.pipeline_run import PipelineRun, PipelineRunsFilter, RunGroupBy, RunRecord
 from dagster.daemon.types import DaemonHeartbeat
 
 
@@ -43,7 +43,11 @@ class RunStorage(ABC, MayHaveInstanceWeakref):
 
     @abstractmethod
     def get_runs(
-        self, filters: PipelineRunsFilter = None, cursor: str = None, limit: int = None
+        self,
+        filters: PipelineRunsFilter = None,
+        cursor: str = None,
+        limit: int = None,
+        group_by: Optional[RunGroupBy] = None,
     ) -> Iterable[PipelineRun]:
         """Return all the runs present in the storage that match the given filters.
 
@@ -124,25 +128,6 @@ class RunStorage(ABC, MayHaveInstanceWeakref):
         # more than 2x total instances of PipelineRun.
 
     @abstractmethod
-    def get_runs_by_job(
-        self,
-        limit: int = 1,
-        filters: Optional[PipelineRunsFilter] = None,
-        job_names: Optional[Sequence[str]] = None,
-    ) -> Mapping[str, Sequence[PipelineRun]]:
-        pass
-
-    @abstractmethod
-    def get_runs_by_tag(
-        self,
-        tag_key: str,
-        limit: int = 1,
-        filters: Optional[PipelineRunsFilter] = None,
-        tag_values: Optional[Sequence[str]] = None,
-    ) -> Mapping[str, Sequence[PipelineRun]]:
-        pass
-
-    @abstractmethod
     def get_run_by_id(self, run_id: str) -> Optional[PipelineRun]:
         """Get a run by its id.
 
@@ -160,6 +145,7 @@ class RunStorage(ABC, MayHaveInstanceWeakref):
         limit: int = None,
         order_by: str = None,
         ascending: bool = False,
+        group_by: Optional[RunGroupBy] = None,
     ) -> List[RunRecord]:
         """Return a list of run records stored in the run storage, sorted by the given column in given order.
 

@@ -16,7 +16,12 @@ from dagster.core.host_representation import (
     ManagedGrpcPythonEnvRepositoryLocationOrigin,
 )
 from dagster.core.snap import create_pipeline_snapshot_id
-from dagster.core.storage.pipeline_run import DagsterRun, PipelineRunStatus, PipelineRunsFilter
+from dagster.core.storage.pipeline_run import (
+    DagsterRun,
+    PipelineRunStatus,
+    PipelineRunsFilter,
+    RunGroupBy,
+)
 from dagster.core.storage.runs.migration import RUN_DATA_MIGRATIONS
 from dagster.core.storage.runs.sql_run_storage import SqlRunStorage
 from dagster.core.storage.tags import PARENT_RUN_ID_TAG, ROOT_RUN_ID_TAG
@@ -1181,18 +1186,28 @@ class TestRunStorage:
         c_one = _add_run("c_pipeline", tags={"a": "A"})
         c_two = _add_run("c_pipeline", tags={"a": "B"})
 
-        runs_by_job = storage.get_runs_by_job()
+        runs_by_job = {
+            run.pipeline_name: run
+            for run in storage.get_runs(group_by=RunGroupBy(by_job=True, by_tag=None), limit=1)
+        }
         assert set(runs_by_job.keys()) == {"a_pipeline", "b_pipeline", "c_pipeline"}
-        assert [run.run_id for run in runs_by_job.get("a_pipeline")] == [a_two.run_id]
-        assert [run.run_id for run in runs_by_job.get("b_pipeline")] == [b_two.run_id]
-        assert [run.run_id for run in runs_by_job.get("c_pipeline")] == [c_two.run_id]
+        assert runs_by_job.get("a_pipeline").run_id == a_two.run_id
+        assert runs_by_job.get("b_pipeline").run_id == b_two.run_id
+        assert runs_by_job.get("c_pipeline").run_id == c_two.run_id
 
         # fetch with a runs filter applied
-        runs_by_job = storage.get_runs_by_job(filters=PipelineRunsFilter(tags={"a": "A"}))
+        runs_by_job = {
+            run.pipeline_name: run
+            for run in storage.get_runs(
+                group_by=RunGroupBy(by_job=True, by_tag=None),
+                filters=PipelineRunsFilter(tags={"a": "A"}),
+                limit=1,
+            )
+        }
         assert set(runs_by_job.keys()) == {"a_pipeline", "b_pipeline", "c_pipeline"}
-        assert [run.run_id for run in runs_by_job.get("a_pipeline")] == [a_two.run_id]
-        assert [run.run_id for run in runs_by_job.get("b_pipeline")] == [b_two.run_id]
-        assert [run.run_id for run in runs_by_job.get("c_pipeline")] == [c_one.run_id]
+        assert runs_by_job.get("a_pipeline").run_id == a_two.run_id
+        assert runs_by_job.get("b_pipeline").run_id == b_two.run_id
+        assert runs_by_job.get("c_pipeline").run_id == c_one.run_id
 
     def test_by_tag(self, storage):
         def _add_run(job_name, tags=None):
@@ -1210,17 +1225,25 @@ class TestRunStorage:
         one = _add_run("a", tags={"a": "1"})
         two = _add_run("a", tags={"a": "2"})
 
-        runs_by_tag = storage.get_runs_by_tag(tag_key="a")
+        runs_by_tag = {
+            run.tags.get("a"): run
+            for run in storage.get_runs(group_by=RunGroupBy(by_job=False, by_tag="a"), limit=1)
+        }
         assert set(runs_by_tag.keys()) == {"1", "2", "3", "4"}
-        assert [run.run_id for run in runs_by_tag.get("1")] == [one.run_id]
-        assert [run.run_id for run in runs_by_tag.get("2")] == [two.run_id]
-        assert [run.run_id for run in runs_by_tag.get("3")] == [three.run_id]
-        assert [run.run_id for run in runs_by_tag.get("4")] == [b.run_id]
+        assert runs_by_tag.get("1").run_id == one.run_id
+        assert runs_by_tag.get("2").run_id == two.run_id
+        assert runs_by_tag.get("3").run_id == three.run_id
+        assert runs_by_tag.get("4").run_id == b.run_id
 
-        runs_by_tag = storage.get_runs_by_tag(
-            tag_key="a", filters=PipelineRunsFilter(pipeline_name="a")
-        )
+        runs_by_tag = {
+            run.tags.get("a"): run
+            for run in storage.get_runs(
+                group_by=RunGroupBy(by_job=False, by_tag="a"),
+                limit=1,
+                filters=PipelineRunsFilter(pipeline_name="a"),
+            )
+        }
         assert set(runs_by_tag.keys()) == {"1", "2", "3"}
-        assert [run.run_id for run in runs_by_tag.get("1")] == [one.run_id]
-        assert [run.run_id for run in runs_by_tag.get("2")] == [two.run_id]
-        assert [run.run_id for run in runs_by_tag.get("3")] == [three.run_id]
+        assert runs_by_tag.get("1").run_id == one.run_id
+        assert runs_by_tag.get("2").run_id == two.run_id
+        assert runs_by_tag.get("3").run_id == three.run_id

@@ -475,6 +475,11 @@ class PipelineRunsFilter(
         return PipelineRunsFilter(tags=PipelineRun.tags_for_backfill_id(backfill_id))
 
 
+class RunGroupBy(NamedTuple):
+    by_job: bool
+    by_tag: str
+
+
 class RunRecord(NamedTuple):
     """Internal representation of a run record, as stored in a
     :py:class:`~dagster.core.storage.runs.RunStorage`.

@@ -4,7 +4,7 @@ from abc import abstractmethod
 from collections import defaultdict
 from datetime import datetime
 from enum import Enum
-from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple, Union
+from typing import Callable, Dict, Iterable, List, Optional, Set, Tuple, Union
 
 import pendulum
 import sqlalchemy as db
@@ -33,7 +33,7 @@ from dagster.serdes import (
 from dagster.seven import JSONDecodeError
 from dagster.utils import merge_dicts, utc_datetime_from_timestamp
 
-from ..pipeline_run import PipelineRun, PipelineRunsFilter, RunRecord
+from ..pipeline_run import PipelineRun, PipelineRunsFilter, RunGroupBy, RunRecord
 from .base import RunStorage
 from .migration import RUN_DATA_MIGRATIONS, RUN_PARTITIONS
 from .schema import (
@@ -214,6 +214,17 @@ class SqlRunStorage(RunStorage):  # pylint: disable=no-init
 
         return query
 
+    def _add_group_by_column(self, base_columns, group_by, order_by, ascending):
+        sorting_column = getattr(RunsTable.c, order_by) if order_by else RunsTable.c.id
+        direction = db.asc if ascending else db.desc
+        partition_column = RunsTable.c.pipeline_name if group_by.by_job else RunTagsTable.c.value
+        rank_column = (
+            db.func.rank()
+            .over(order_by=direction(sorting_column), partition_by=partition_column)
+            .label("rank")
+        )
+        return [*base_columns, rank_column]
+
     def _runs_query(
         self,
         filters: PipelineRunsFilter = None,
@@ -221,8 +232,10 @@ class SqlRunStorage(RunStorage):  # pylint: disable=no-init
         limit: int = None,
         columns: List[str] = None,
         order_by: str = None,
+        group_by: Optional[RunGroupBy] = None,
         ascending: bool = False,
     ):
+        check.invariant(not cursor or not group_by, "Cannot use cursor and group_by together")
 
         filters = check.opt_inst_param(
             filters, "filters", PipelineRunsFilter, default=PipelineRunsFilter()
@@ -236,26 +249,42 @@ class SqlRunStorage(RunStorage):  # pylint: disable=no-init
         if columns is None:
             columns = ["run_body"]
 
-        base_query_columns = [getattr(RunsTable.c, column) for column in columns]
-
-        # If we have a tags filter, then we need to select from a joined table
-        if filters.tags:
-            base_query = db.select(base_query_columns).select_from(
+        query_columns = [getattr(RunsTable.c, column) for column in columns]
+        if group_by:
+            query_columns = self._add_group_by_column(query_columns, group_by, order_by, ascending)
+            base_query = db.select(query_columns).select_from(
                 RunsTable.join(RunTagsTable, RunsTable.c.run_id == RunTagsTable.c.run_id)
+                if group_by.by_tag or filters.tags
+                else RunsTable
             )
+            if group_by.by_tag:
+                base_query = base_query.where(RunTagsTable.c.key == group_by.by_tag)
+            base_query = self._add_filters_to_query(base_query, filters)
+            subquery = base_query.subquery()
+            query = db.select(subquery).order_by(subquery.c.rank.asc())
+            if limit:
+                query = query.where(subquery.c.rank <= limit)
         else:
-            base_query = db.select(base_query_columns).select_from(RunsTable)
+            if filters.tags:
+                base_query = db.select(query_columns).select_from(
+                    RunsTable.join(RunTagsTable, RunsTable.c.run_id == RunTagsTable.c.run_id)
+                )
+            else:
+                base_query = db.select(query_columns).select_from(RunsTable)
 
-        query = self._add_filters_to_query(base_query, filters)
-        query = self._add_cursor_limit_to_query(query, cursor, limit, order_by, ascending)
+            query = self._add_filters_to_query(base_query, filters)
+            query = self._add_cursor_limit_to_query(query, cursor, limit, order_by, ascending)
 
         return query
 
     def get_runs(
-        self, filters: PipelineRunsFilter = None, cursor: str = None, limit: int = None
+        self,
+        filters: PipelineRunsFilter = None,
+        cursor: str = None,
+        limit: int = None,
+        group_by: Optional[RunGroupBy] = None,
     ) -> List[PipelineRun]:
-        query = self._runs_query(filters, cursor, limit)
-
+        query = self._runs_query(filters, cursor, limit, group_by=group_by)
         rows = self.fetchall(query)
         return self._rows_to_runs(rows)
 
@@ -292,6 +321,7 @@ class SqlRunStorage(RunStorage):  # pylint: disable=no-init
         limit: int = None,
         order_by: str = None,
         ascending: bool = False,
+        group_by: Optional[RunGroupBy] = None,
     ) -> List[RunRecord]:
         filters = check.opt_inst_param(
             filters, "filters", PipelineRunsFilter, default=PipelineRunsFilter()
@@ -305,6 +335,7 @@ class SqlRunStorage(RunStorage):  # pylint: disable=no-init
             columns=["id", "run_body", "create_timestamp", "update_timestamp"],
             order_by=order_by,
             ascending=ascending,
+            group_by=group_by,
         )
 
         rows = self.fetchall(query)
@@ -320,88 +351,6 @@ class SqlRunStorage(RunStorage):  # pylint: disable=no-init
             )
             for row in rows
         ]
-
-    def get_runs_by_job(
-        self,
-        limit: int = 1,
-        filters: Optional[PipelineRunsFilter] = None,
-        job_names: Optional[Sequence[str]] = None,
-    ) -> Mapping[str, Sequence[PipelineRun]]:
-        subquery = db.select(
-            RunsTable.c.pipeline_name,
-            RunsTable.c.run_body,
-            db.func.rank()
-            .over(order_by=RunsTable.c.id.desc(), partition_by=RunsTable.c.pipeline_name)
-            .label("rank"),
-        )
-        if filters and filters.tags:
-            subquery = subquery.select_from(
-                RunsTable.join(RunTagsTable, RunsTable.c.run_id == RunTagsTable.c.run_id)
-            )
-        else:
-            subquery = subquery.select_from(RunsTable)
-
-        if filters:
-            subquery = self._add_filters_to_query(subquery, filters)
-        if job_names:
-            subquery = subquery.filter(RunsTable.c.pipeline_name.in_(job_names))
-        subquery = subquery.subquery()
-
-        query = db.select(subquery).filter(subquery.c.rank <= limit)
-        rows = self.fetchall(query)
-        result = defaultdict(list)
-        for r in rows:
-            result[r[0]].append(tuple([deserialize_as(r[1], PipelineRun), r[2]]))
-
-        runs_by_pipeline = {}
-        for pipeline_name, pipeline_results in result.items():
-            runs_by_pipeline[pipeline_name] = [
-                item[0] for item in sorted(pipeline_results, key=lambda item: item[1])
-            ]
-
-        return runs_by_pipeline
-
-    def get_runs_by_tag(
-        self,
-        tag_key: str,
-        limit: int = 1,
-        filters: Optional[PipelineRunsFilter] = None,
-        tag_values: Optional[Sequence[str]] = None,
-    ) -> Mapping[str, Sequence[PipelineRun]]:
-        subquery = (
-            db.select(
-                RunsTable.c.run_body,
-                db.func.rank()
-                .over(order_by=RunsTable.c.id.desc(), partition_by=RunTagsTable.c.value)
-                .label("rank"),
-            )
-            .select_from(RunsTable.join(RunTagsTable, RunsTable.c.run_id == RunTagsTable.c.run_id))
-            .where(RunTagsTable.c.key == tag_key)
-        )
-
-        if tag_values:
-            subquery = subquery.where(RunTagsTable.c.value.in_(tag_values))
-
-        if filters:
-            subquery = self._add_filters_to_query(subquery, filters)
-
-        subquery = subquery.subquery()
-
-        query = db.select(subquery).filter(subquery.c.rank <= limit)
-        rows = self.fetchall(query)
-        result = defaultdict(list)
-        for (body, rank) in rows:
-            run = deserialize_as(body, PipelineRun)
-            tag_value = run.tags.get(tag_key)
-            result[tag_value].append(tuple([run, rank]))
-
-        runs_by_tag = {}
-        for tag_value, run_results in result.items():
-            runs_by_tag[tag_value] = [
-                item[0] for item in sorted(run_results, key=lambda item: item[1])
-            ]
-
-        return runs_by_tag
 
     def get_run_tags(self) -> List[Tuple[str, Set[str]]]:
         result = defaultdict(set)
