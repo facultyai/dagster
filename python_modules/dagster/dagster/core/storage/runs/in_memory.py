@@ -123,19 +123,20 @@ class InMemoryRunStorage(RunStorage):
         check.opt_int_param(limit, "limit")
         check.opt_inst_param(group_by, "group_by", RunGroupBy)
 
-        # if not filters:
-        #     return self._slice(list(self._runs.values())[::-1], cursor, limit)
-
         matching_runs = list(filter(build_run_filter(filters), list(self._runs.values())[::-1]))
         if not group_by or not limit:
             return self._slice(matching_runs, cursor=cursor, limit=limit)
 
         results = []
-        job_counts: Dict[str, int] = defaultdict(int)
+        group_by_counts: Dict[str, int] = defaultdict(int)
         for run in matching_runs:
-            if job_counts[run.pipeline_name] >= limit:
+            if group_by.by_job:
+                group_by_key = run.pipeline_name
+            else:
+                group_by_key = run.tags.get(group_by.by_tag)
+            if not group_by_key or group_by_counts[group_by_key] >= limit:
                 continue
-            job_counts[run.pipeline_name] += 1
+            group_by_counts[group_by_key] += 1
             results.append(run)
         return results
 
