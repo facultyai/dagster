@@ -1,3 +1,4 @@
+from dagster_graphql.schema.logs.events import GrapheneEventMetadataEntry
 import graphene
 from dagster import check
 from dagster.core.snap import PipelineSnapshot
@@ -80,6 +81,7 @@ class GrapheneDagsterType(graphene.Interface):
     output_schema_type = graphene.Field(GrapheneConfigType)
 
     inner_types = non_null_list(lambda: GrapheneDagsterType)
+    metadata = non_null_list(GrapheneEventMetadataEntry)
 
     class Meta:
         name = "DagsterType"
