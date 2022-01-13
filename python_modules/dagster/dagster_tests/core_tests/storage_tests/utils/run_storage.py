@@ -20,7 +20,7 @@ from dagster.core.storage.pipeline_run import (
     DagsterRun,
     PipelineRunStatus,
     PipelineRunsFilter,
-    RunGroupBy,
+    RunBucketLimit,
 )
 from dagster.core.storage.runs.migration import RUN_DATA_MIGRATIONS
 from dagster.core.storage.runs.sql_run_storage import SqlRunStorage
@@ -1188,7 +1188,7 @@ class TestRunStorage:
 
         runs_by_job = {
             run.pipeline_name: run
-            for run in storage.get_runs(group_by=RunGroupBy(by_job=True, by_tag=None), limit=1)
+            for run in storage.get_runs(limit=RunBucketLimit.by_job(bucket_limit=1))
         }
         assert set(runs_by_job.keys()) == {"a_pipeline", "b_pipeline", "c_pipeline"}
         assert runs_by_job.get("a_pipeline").run_id == a_two.run_id
@@ -1199,9 +1199,8 @@ class TestRunStorage:
         runs_by_job = {
             run.pipeline_name: run
             for run in storage.get_runs(
-                group_by=RunGroupBy(by_job=True, by_tag=None),
                 filters=PipelineRunsFilter(tags={"a": "A"}),
-                limit=1,
+                limit=RunBucketLimit.by_job(bucket_limit=1),
             )
         }
         assert set(runs_by_job.keys()) == {"a_pipeline", "b_pipeline", "c_pipeline"}
@@ -1227,7 +1226,7 @@ class TestRunStorage:
 
         runs_by_tag = {
             run.tags.get("a"): run
-            for run in storage.get_runs(group_by=RunGroupBy(by_job=False, by_tag="a"), limit=1)
+            for run in storage.get_runs(limit=RunBucketLimit.by_tag("a", bucket_limit=1))
         }
         assert set(runs_by_tag.keys()) == {"1", "2", "3", "4"}
         assert runs_by_tag.get("1").run_id == one.run_id
@@ -1238,9 +1237,8 @@ class TestRunStorage:
         runs_by_tag = {
             run.tags.get("a"): run
             for run in storage.get_runs(
-                group_by=RunGroupBy(by_job=False, by_tag="a"),
-                limit=1,
                 filters=PipelineRunsFilter(pipeline_name="a"),
+                limit=RunBucketLimit.by_tag("a", bucket_limit=1),
             )
         }
         assert set(runs_by_tag.keys()) == {"1", "2", "3"}

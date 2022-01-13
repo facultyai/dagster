@@ -47,7 +47,7 @@ from dagster.core.storage.pipeline_run import (
     PipelineRunStatsSnapshot,
     PipelineRunStatus,
     PipelineRunsFilter,
-    RunGroupBy,
+    RunBucketLimit,
     RunRecord,
 )
 from dagster.core.storage.tags import MEMOIZED_RUN_TAG
@@ -1073,10 +1073,9 @@ class DagsterInstance:
         self,
         filters: PipelineRunsFilter = None,
         cursor: str = None,
-        limit: int = None,
-        group_by: Optional[RunGroupBy] = None,
+        limit: Optional[Union[int, RunBucketLimit]] = None,
     ) -> Iterable[PipelineRun]:
-        return self._run_storage.get_runs(filters, cursor, limit, group_by=group_by)
+        return self._run_storage.get_runs(filters, cursor, limit)
 
     @traced
     def get_runs_count(self, filters: PipelineRunsFilter = None) -> int:
@@ -1092,7 +1091,7 @@ class DagsterInstance:
     def get_run_records(
         self,
         filters: PipelineRunsFilter = None,
-        limit: int = None,
+        limit: Optional[Union[int, RunBucketLimit]] = None,
         order_by: str = None,
         ascending: bool = False,
     ) -> List[RunRecord]:

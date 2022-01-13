@@ -18,7 +18,7 @@ from dagster.core.snap import (
 from dagster.daemon.types import DaemonHeartbeat
 from dagster.utils import frozendict, merge_dicts
 
-from ..pipeline_run import PipelineRun, PipelineRunsFilter, RunGroupBy, RunRecord
+from ..pipeline_run import PipelineRun, PipelineRunsFilter, RunBucketLimit, RunRecord
 from .base import RunStorage
 
 
@@ -115,28 +115,25 @@ class InMemoryRunStorage(RunStorage):
         self,
         filters: PipelineRunsFilter = None,
         cursor: str = None,
-        limit: int = None,
-        group_by: Optional[RunGroupBy] = None,
+        limit: Optional[Union[int, RunBucketLimit]] = None,
     ) -> List[PipelineRun]:
         check.opt_inst_param(filters, "filters", PipelineRunsFilter)
         check.opt_str_param(cursor, "cursor")
-        check.opt_int_param(limit, "limit")
-        check.opt_inst_param(group_by, "group_by", RunGroupBy)
+        check.opt_inst_param(limit, "limit", (int, RunBucketLimit))
 
         matching_runs = list(filter(build_run_filter(filters), list(self._runs.values())[::-1]))
-        if not group_by or not limit:
+        if not isinstance(limit, RunBucketLimit):
             return self._slice(matching_runs, cursor=cursor, limit=limit)
 
         results = []
-        group_by_counts: Dict[str, int] = defaultdict(int)
+        bucket_counts: Dict[str, int] = defaultdict(int)
         for run in matching_runs:
-            if group_by.by_job:
-                group_by_key = run.pipeline_name
-            else:
-                group_by_key = run.tags.get(group_by.by_tag)
-            if not group_by_key or group_by_counts[group_by_key] >= limit:
+            bucket_key = run.pipeline_name if limit.is_by_job else run.tags.get(limit.tag_key)
+            if not bucket_key or (
+                limit.bucket_limit and bucket_counts[bucket_key] >= limit.bucket_limit
+            ):
                 continue
-            group_by_counts[group_by_key] += 1
+            bucket_counts[bucket_key] += 1
             results.append(run)
         return results
 
@@ -149,7 +146,7 @@ class InMemoryRunStorage(RunStorage):
         self,
         items: List,
         cursor: Optional[str],
-        limit: Optional[int],
+        limit: Optional[int] = None,
         key_fn: Callable = lambda _: _.run_id,
     ):
         if cursor:
@@ -176,10 +173,9 @@ class InMemoryRunStorage(RunStorage):
     def get_run_records(
         self,
         filters: PipelineRunsFilter = None,
-        limit: int = None,
+        limit: Optional[Union[int, RunBucketLimit]] = None,
         order_by: str = None,
         ascending: bool = False,
-        group_by: Optional[RunGroupBy] = None,
     ) -> List[RunRecord]:
         raise NotImplementedError("In memory run storage does not track timestamp yet.")
 

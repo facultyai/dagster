@@ -475,9 +475,43 @@ class PipelineRunsFilter(
         return PipelineRunsFilter(tags=PipelineRun.tags_for_backfill_id(backfill_id))
 
 
-class RunGroupBy(NamedTuple):
-    by_job: bool
-    by_tag: str
+class RunBucketType(Enum):
+    BY_JOB = "BY_JOB"
+    BY_TAG = "BY_TAG"
+
+
+class RunBucketLimit(namedtuple("_RunBucketLimit", "bucket_type tag_key values bucket_limit")):
+    def __new__(cls, bucket_type, tag_key=None, values=None, bucket_limit=None):
+        return super(RunBucketLimit, cls).__new__(
+            cls,
+            bucket_type=check.inst_param(bucket_type, "bucket_type", RunBucketType),
+            tag_key=check.opt_str_param(tag_key, "tag_key"),
+            values=check.opt_list_param(values, "values", of_type=str),
+            bucket_limit=check.opt_int_param(bucket_limit, "bucket_limit"),
+        )
+
+    @property
+    def is_by_job(self):
+        return self.bucket_type == RunBucketType.BY_JOB
+
+    @property
+    def is_by_tag(self):
+        return self.bucket_type == RunBucketType.BY_TAG
+
+    @staticmethod
+    def by_tag(tag_key, tag_values=None, bucket_limit=None):
+        return RunBucketLimit(
+            RunBucketType.BY_TAG,
+            tag_key=check.str_param(tag_key, "tag_key"),
+            values=tag_values,
+            bucket_limit=bucket_limit,
+        )
+
+    @staticmethod
+    def by_job(job_names=None, bucket_limit=None):
+        return RunBucketLimit(
+            RunBucketType.BY_JOB, tag_key=None, values=job_names, bucket_limit=bucket_limit
+        )
 
 
 class RunRecord(NamedTuple):

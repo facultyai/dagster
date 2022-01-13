@@ -5,7 +5,12 @@ from dagster.core.events import DagsterEvent
 from dagster.core.execution.backfill import BulkActionStatus, PartitionBackfill
 from dagster.core.instance import MayHaveInstanceWeakref
 from dagster.core.snap import ExecutionPlanSnapshot, PipelineSnapshot
-from dagster.core.storage.pipeline_run import PipelineRun, PipelineRunsFilter, RunGroupBy, RunRecord
+from dagster.core.storage.pipeline_run import (
+    PipelineRun,
+    PipelineRunsFilter,
+    RunBucketLimit,
+    RunRecord,
+)
 from dagster.daemon.types import DaemonHeartbeat
 
 
@@ -46,8 +51,7 @@ class RunStorage(ABC, MayHaveInstanceWeakref):
         self,
         filters: PipelineRunsFilter = None,
         cursor: str = None,
-        limit: int = None,
-        group_by: Optional[RunGroupBy] = None,
+        limit: Optional[Union[int, RunBucketLimit]] = None,
     ) -> Iterable[PipelineRun]:
         """Return all the runs present in the storage that match the given filters.
 
@@ -142,10 +146,9 @@ class RunStorage(ABC, MayHaveInstanceWeakref):
     def get_run_records(
         self,
         filters: PipelineRunsFilter = None,
-        limit: int = None,
+        limit: Optional[Union[int, RunBucketLimit]] = None,
         order_by: str = None,
         ascending: bool = False,
-        group_by: Optional[RunGroupBy] = None,
     ) -> List[RunRecord]:
         """Return a list of run records stored in the run storage, sorted by the given column in given order.
 
