@@ -199,7 +199,7 @@ class TableMetadataEntryData(
     NamedTuple(
         "_TableMetadataEntryData",
         [
-            ("data", List[Dict]),
+            ("data", List[Dict[str, object]]),
         ],
     )
 ):
@@ -210,7 +210,7 @@ class TableMetadataEntryData(
             names to values.
     """
 
-    def __new__(cls, data: Optional[str]):
+    def __new__(cls, data: List[Dict[str, object]]):
         return super(TableMetadataEntryData, cls).__new__(
             cls,
             check.opt_list_param(data, "data", of_type=dict),
@@ -794,7 +794,7 @@ class EventMetadataEntry(
 
     @staticmethod
     def table(
-        data: List[Dict], label: str, description: Optional[str] = None
+        data: List[Dict[str, object]], label: str, description: Optional[str] = None
     ) -> "EventMetadataEntry":
         """Static constructor for a metadata entry containing tabluar data as
         :py:class:`TableMetadataEntryData`. For example:
