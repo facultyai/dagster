@@ -41,6 +41,9 @@ MAX_BYTES = 10485760  # 10 MB = 10 * 1024 * 1024 bytes
 UPDATE_REPO_STATS = "update_repo_stats"
 START_DAGIT_WEBSERVER = "start_dagit_webserver"
 DAEMON_ALIVE = "daemon_alive"
+SCHEDULED_RUN_CREATED = "scheduled_run_created"
+SENSOR_RUN_CREATED = "sensor_run_created"
+BACKFILL_RUN_CREATED = "backfill_run_created"
 TELEMETRY_VERSION = "0.2"
 
 TELEMETRY_WHITELISTED_FUNCTIONS = {
@@ -148,14 +151,13 @@ class TelemetryEntry(
         instance_id = check.str_param(instance_id, "instance_id")
         metadata = check.opt_dict_param(metadata, "metadata")
 
-        if action == UPDATE_REPO_STATS:
-            pipeline_name_hash = check.str_param(pipeline_name_hash, "pipeline_name_hash")
-            num_pipelines_in_repo = check.str_param(num_pipelines_in_repo, "num_pipelines_in_repo")
-            repo_hash = check.str_param(repo_hash, "repo_hash")
-        else:
-            pipeline_name_hash = ""
-            num_pipelines_in_repo = ""
-            repo_hash = ""
+        pipeline_name_hash = check.opt_str_param(
+            pipeline_name_hash, "pipeline_name_hash", default=""
+        )
+        num_pipelines_in_repo = check.opt_str_param(
+            num_pipelines_in_repo, "num_pipelines_in_repo", default=""
+        )
+        repo_hash = check.opt_str_param(repo_hash, "repo_hash", default="")
 
         return super(TelemetryEntry, cls).__new__(
             cls,
@@ -417,7 +419,15 @@ def log_workspace_stats(instance, workspace_process_context):
             log_external_repo_stats(instance, source="dagit", external_repo=external_repo)
 
 
-def log_action(instance, action, client_time=None, elapsed_time=None, metadata=None):
+def log_action(
+    instance,
+    action,
+    client_time=None,
+    elapsed_time=None,
+    metadata=None,
+    pipeline_name_hash=None,
+    repo_hash=None,
+):
     check.inst_param(instance, "instance", DagsterInstance)
     if client_time is None:
         client_time = datetime.datetime.now()
@@ -434,6 +444,8 @@ def log_action(instance, action, client_time=None, elapsed_time=None, metadata=N
                 event_id=str(uuid.uuid4()),
                 instance_id=instance_id,
                 metadata=metadata,
+                repo_hash=repo_hash,
+                pipeline_name_hash=pipeline_name_hash,
             )._asdict()
         )
 
