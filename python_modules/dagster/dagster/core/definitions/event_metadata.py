@@ -212,7 +212,8 @@ class TableMetadataEntryData(
 
     def __new__(cls, data: Optional[str]):
         return super(TableMetadataEntryData, cls).__new__(
-            cls, check.opt_list_param(data, "data", of_type=dict),
+            cls,
+            check.opt_list_param(data, "data", of_type=dict),
         )
 
 
@@ -359,6 +360,7 @@ class DagsterAssetMetadataEntryData(
             cls, check.inst_param(asset_key, "asset_key", AssetKey)
         )
 
+
 @whitelist_for_serdes
 class ColumnarSchemaMetadataEntryData(
     NamedTuple("_ColumnarSchemaMetadataEntryData", [("schema", Dict)])
@@ -373,7 +375,6 @@ class ColumnarSchemaMetadataEntryData(
         return super(ColumnarSchemaMetadataEntryData, cls).__new__(
             cls, check.dict_param(schema, "schema")
         )
-
 
 
 ## for runtime checks
@@ -653,9 +654,6 @@ class EventMetadata:
         return DagsterAssetMetadataEntryData(asset_key)
 
 
-Metadata = EventMetadata
-
-
 @whitelist_for_serdes
 class EventMetadataEntry(
     NamedTuple(
@@ -810,7 +808,7 @@ class EventMetadataEntry(
                     label="is_valid",
                     metadata_entries=[
                         EventMetadataEntry.table(
-                            data, label="failure_cases", 
+                            data, label="failure_cases",
                         ),
                     ],
                 )
@@ -985,7 +983,7 @@ class EventMetadataEntry(
                     label="is_valid",
                     metadata_entries=[
                         EventMetadataEntry.columnar_schema(
-                            columnar_schema, label="failure_cases", 
+                            columnar_schema, label="failure_cases",
                         ),
                     ],
                 )
@@ -998,8 +996,6 @@ class EventMetadataEntry(
         return EventMetadataEntry(
             label, description, ColumnarSchemaMetadataEntryData(columnar_schema)
         )
-
-MetadataEntry = EventMetadataEntry
 
 
 class PartitionMetadataEntry(

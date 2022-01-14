@@ -7,10 +7,9 @@ from dagster.builtins import BuiltinEnum
 from dagster.config.config_type import Array, ConfigType
 from dagster.config.config_type import Noneable as ConfigNoneable
 
-# from dagster.core.definitions.event_metadata import MetadataEntry
 from dagster.core.definitions.events import TypeCheck
 from dagster.core.errors import DagsterInvalidDefinitionError, DagsterInvariantViolationError
-from dagster.core.definitions.event_metadata import MetadataEntry
+from dagster.core.definitions.event_metadata import EventMetadataEntry
 from dagster.serdes import whitelist_for_serdes
 
 from .builtin_config_schemas import BuiltinSchemas
@@ -95,7 +94,7 @@ class DagsterType:
         required_resource_keys: t.Set[str] = None,
         kind: DagsterTypeKind = DagsterTypeKind.REGULAR,
         typing_type: t.Optional[t.Type] = None,
-        metadata_entries: t.Optional[t.List[MetadataEntry]] = None,
+        metadata_entries: t.Optional[t.List[EventMetadataEntry]] = None,
     ):
         check.opt_str_param(key, "key")
         check.opt_str_param(name, "name")
@@ -142,8 +141,8 @@ class DagsterType:
         self.typing_type = typing_type
 
         self._metadata_entries = cast(
-            t.List[MetadataEntry],
-            check.opt_list_param(metadata_entries, "metadata_entries", of_type=MetadataEntry),
+            t.List[EventMetadataEntry],
+            check.opt_list_param(metadata_entries, "metadata_entries", of_type=EventMetadataEntry),
         )
 
     def type_check(self, context: "TypeCheckContext", value: object) -> TypeCheck:
@@ -172,7 +171,7 @@ class DagsterType:
         return _RUNTIME_MAP[builtin_enum]
 
     @property
-    def metadata_entries(self) -> t.List[MetadataEntry]:
+    def metadata_entries(self) -> t.List[EventMetadataEntry]:
         return self._metadata_entries
 
     @property
