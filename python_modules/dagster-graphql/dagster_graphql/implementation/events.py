@@ -1,7 +1,10 @@
 from math import isnan
 
+from dagster_graphql.schema.logs.events import GrapheneEventColumnarSchemaMetadataEntry, GrapheneEventTableMetadataEntry
+
 from dagster import check, seven
 from dagster.core.definitions.event_metadata import (
+    ColumnarSchemaMetadataEntryData,
     DagsterAssetMetadataEntryData,
     DagsterPipelineRunMetadataEntryData,
     EventMetadataEntry,
@@ -11,6 +14,7 @@ from dagster.core.definitions.event_metadata import (
     MarkdownMetadataEntryData,
     PathMetadataEntryData,
     PythonArtifactMetadataEntryData,
+    TableMetadataEntryData,
     TextMetadataEntryData,
     UrlMetadataEntryData,
 )
@@ -34,6 +38,8 @@ def iterate_metadata_entries(metadata_entries):
         GrapheneEventUrlMetadataEntry,
         GrapheneEventPipelineRunMetadataEntry,
         GrapheneEventAssetMetadataEntry,
+        GrapheneEventColumnarSchemaMetadataEntry,
+        GrapheneEventTableMetadataEntry,
     )
 
     check.list_param(metadata_entries, "metadata_entries", of_type=EventMetadataEntry)
@@ -43,6 +49,12 @@ def iterate_metadata_entries(metadata_entries):
                 label=metadata_entry.label,
                 description=metadata_entry.description,
                 path=metadata_entry.entry_data.path,
+            )
+        elif isinstance(metadata_entry.entry_data, TableMetadataEntryData):
+            yield GrapheneEventTableMetadataEntry(
+                label=metadata_entry.label,
+                description=metadata_entry.description,
+                jsonString=seven.json.dumps(metadata_entry.entry_data.data),
             )
         elif isinstance(metadata_entry.entry_data, JsonMetadataEntryData):
             yield GrapheneEventJsonMetadataEntry(
@@ -111,6 +123,12 @@ def iterate_metadata_entries(metadata_entries):
                 label=metadata_entry.label,
                 description=metadata_entry.description,
                 assetKey=metadata_entry.entry_data.asset_key,
+            )
+        elif isinstance(metadata_entry.entry_data, ColumnarSchemaMetadataEntryData):
+            yield GrapheneEventColumnarSchemaMetadataEntry(
+                label=metadata_entry.label,
+                description=metadata_entry.description,
+                jsonString=seven.json.dumps(metadata_entry.entry_data.schema),
             )
         else:
             # skip rest for now

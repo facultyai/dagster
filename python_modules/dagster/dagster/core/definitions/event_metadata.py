@@ -13,6 +13,7 @@ ParseableMetadataEntryData = Union[
     "TextMetadataEntryData",
     "UrlMetadataEntryData",
     "PathMetadataEntryData",
+    "TableMetadataEntryData",
     "JsonMetadataEntryData",
     "MarkdownMetadataEntryData",
     "FloatMetadataEntryData",
@@ -20,6 +21,7 @@ ParseableMetadataEntryData = Union[
     "PythonArtifactMetadataEntryData",
     "DagsterAssetMetadataEntryData",
     "DagsterPipelineRunMetadataEntryData",
+    "ColumnarSchemaMetadataEntryData",
     str,
     float,
     int,
@@ -31,6 +33,7 @@ EventMetadataEntryData = Union[
     "TextMetadataEntryData",
     "UrlMetadataEntryData",
     "PathMetadataEntryData",
+    "TableMetadataEntryData",
     "JsonMetadataEntryData",
     "MarkdownMetadataEntryData",
     "FloatMetadataEntryData",
@@ -38,6 +41,7 @@ EventMetadataEntryData = Union[
     "PythonArtifactMetadataEntryData",
     "DagsterAssetMetadataEntryData",
     "DagsterPipelineRunMetadataEntryData",
+    "ColumnarSchemaMetadataEntryData",
 ]
 
 MetadataEntryData = EventMetadataEntryData
@@ -63,6 +67,7 @@ def parse_metadata_entry(label: str, value: ParseableMetadataEntryData) -> "Even
             TextMetadataEntryData,
             UrlMetadataEntryData,
             PathMetadataEntryData,
+            TableMetadataEntryData,
             JsonMetadataEntryData,
             MarkdownMetadataEntryData,
             FloatMetadataEntryData,
@@ -70,6 +75,7 @@ def parse_metadata_entry(label: str, value: ParseableMetadataEntryData) -> "Even
             PythonArtifactMetadataEntryData,
             DagsterAssetMetadataEntryData,
             DagsterPipelineRunMetadataEntryData,
+            ColumnarSchemaMetadataEntryData,
         ),
     ):
         return EventMetadataEntry(label, None, value)
@@ -185,6 +191,28 @@ class PathMetadataEntryData(
     def __new__(cls, path: Optional[str]):
         return super(PathMetadataEntryData, cls).__new__(
             cls, check.opt_str_param(path, "path", default="")
+        )
+
+
+@whitelist_for_serdes
+class TableMetadataEntryData(
+    NamedTuple(
+        "_TableMetadataEntryData",
+        [
+            ("data", List[Dict]),
+        ],
+    )
+):
+    """Container class for table metadata entry data.
+
+    Args:
+        data (List[Dict]): The data as a list of rows. Each row is a dictionary mapping column
+            names to values.
+    """
+
+    def __new__(cls, data: Optional[str]):
+        return super(TableMetadataEntryData, cls).__new__(
+            cls, check.opt_list_param(data, "data", of_type=dict),
         )
 
 
@@ -331,6 +359,22 @@ class DagsterAssetMetadataEntryData(
             cls, check.inst_param(asset_key, "asset_key", AssetKey)
         )
 
+@whitelist_for_serdes
+class ColumnarSchemaMetadataEntryData(
+    NamedTuple("_ColumnarSchemaMetadataEntryData", [("schema", Dict)])
+):
+    """Representation of a schema for columnar data.
+
+    Args:
+        schema (Dict): The schema representation in Frictionless format.
+    """
+
+    def __new__(cls, schema: Dict):
+        return super(ColumnarSchemaMetadataEntryData, cls).__new__(
+            cls, check.dict_param(schema, "schema")
+        )
+
+
 
 ## for runtime checks
 
@@ -338,6 +382,7 @@ EntryDataUnion = (
     TextMetadataEntryData,
     UrlMetadataEntryData,
     PathMetadataEntryData,
+    TableMetadataEntryData,
     JsonMetadataEntryData,
     MarkdownMetadataEntryData,
     FloatMetadataEntryData,
@@ -345,6 +390,7 @@ EntryDataUnion = (
     PythonArtifactMetadataEntryData,
     DagsterAssetMetadataEntryData,
     DagsterPipelineRunMetadataEntryData,
+    ColumnarSchemaMetadataEntryData,
 )
 
 
@@ -431,6 +477,29 @@ class EventMetadata:
             path (str): The path for a metadata entry.
         """
         return PathMetadataEntryData(path)
+
+    @staticmethod
+    def table(data: str) -> "TableMetadataEntryData":
+        """Static constructor for a metadata value wrapping arbitrary tabular data as
+        :py:class:`TableMetadataEntryData`. Can be used as the value type for the `metadata`
+        parameter for supported events. For example:
+
+        .. code-block:: python
+
+            @op
+            def emit_metadata(context):
+                yield ExpectationResult(
+                    success=not missing_things,
+                    label="is_present",
+                    metadata={
+                        "about my dataset": EventMetadata.table([{"errors": 3}]),  # TODO: need better example
+                    },
+                )
+
+        Args:
+            data (str): The tabular data for a metadata entry.
+        """
+        return TableMetadataEntryData(data)
 
     @staticmethod
     def json(data: Dict[str, Any]) -> "JsonMetadataEntryData":
@@ -726,6 +795,32 @@ class EventMetadataEntry(
         return EventMetadataEntry.path(path, label, description)
 
     @staticmethod
+    def table(
+        data: List[Dict], label: str, description: Optional[str] = None
+    ) -> "EventMetadataEntry":
+        """Static constructor for a metadata entry containing tabluar data as
+        :py:class:`TableMetadataEntryData`. For example:
+
+        .. code-block:: python
+
+            @op
+            def emit_metadata(context):
+                yield ExpectationResult(
+                    success=no_failures,
+                    label="is_valid",
+                    metadata_entries=[
+                        EventMetadataEntry.table(
+                            data, label="failure_cases", 
+                        ),
+                    ],
+                )
+
+        Args:
+            data (str): The tabular data for a metadata entry.
+        """
+        return EventMetadataEntry(label, description, TableMetadataEntryData(data))
+
+    @staticmethod
     def json(
         data: Optional[Dict[str, Any]],
         label: str,
@@ -874,6 +969,35 @@ class EventMetadataEntry(
         check.inst_param(asset_key, "asset_key", AssetKey)
         return EventMetadataEntry(label, description, DagsterAssetMetadataEntryData(asset_key))
 
+    @staticmethod
+    def columnar_schema(
+        columnar_schema: Dict, label: str, description: Optional[str] = None
+    ) -> "EventMetadataEntry":  # TODO fix docstring
+        """Static constructor for a metadata entry containing a columnar schema as
+        :py:class:`ColumnarSchemaMetadataEntryData`. For example:
+
+        .. code-block:: python
+
+            @op
+            def emit_metadata(context, df):
+                yield ExpectationResult(
+                    success=no_failures,
+                    label="is_valid",
+                    metadata_entries=[
+                        EventMetadataEntry.columnar_schema(
+                            columnar_schema, label="failure_cases", 
+                        ),
+                    ],
+                )
+
+        Args:
+            columnar_schema (ColumnarSchema): The columnar schema for a metadata entry.
+            label (str): Short display label for this metadata entry.
+            description (Optional[str]): A human-readable description of this metadata entry.
+        """
+        return EventMetadataEntry(
+            label, description, ColumnarSchemaMetadataEntryData(columnar_schema)
+        )
 
 MetadataEntry = EventMetadataEntry
 
