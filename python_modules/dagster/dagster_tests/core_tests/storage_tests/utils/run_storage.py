@@ -18,9 +18,10 @@ from dagster.core.host_representation import (
 from dagster.core.snap import create_pipeline_snapshot_id
 from dagster.core.storage.pipeline_run import (
     DagsterRun,
+    JobBucket,
     PipelineRunStatus,
     PipelineRunsFilter,
-    RunBucketLimit,
+    TagBucket,
 )
 from dagster.core.storage.runs.migration import RUN_DATA_MIGRATIONS
 from dagster.core.storage.runs.sql_run_storage import SqlRunStorage
@@ -1188,7 +1189,11 @@ class TestRunStorage:
 
         runs_by_job = {
             run.pipeline_name: run
-            for run in storage.get_runs(limit=RunBucketLimit.by_job(bucket_limit=1))
+            for run in storage.get_runs(
+                bucket=JobBucket(
+                    job_names=["a_pipeline", "b_pipeline", "c_pipeline"], bucket_limit=1
+                )
+            )
         }
         assert set(runs_by_job.keys()) == {"a_pipeline", "b_pipeline", "c_pipeline"}
         assert runs_by_job.get("a_pipeline").run_id == a_two.run_id
@@ -1200,7 +1205,9 @@ class TestRunStorage:
             run.pipeline_name: run
             for run in storage.get_runs(
                 filters=PipelineRunsFilter(tags={"a": "A"}),
-                limit=RunBucketLimit.by_job(bucket_limit=1),
+                bucket=JobBucket(
+                    job_names=["a_pipeline", "b_pipeline", "c_pipeline"], bucket_limit=1
+                ),
             )
         }
         assert set(runs_by_job.keys()) == {"a_pipeline", "b_pipeline", "c_pipeline"}
@@ -1226,7 +1233,9 @@ class TestRunStorage:
 
         runs_by_tag = {
             run.tags.get("a"): run
-            for run in storage.get_runs(limit=RunBucketLimit.by_tag("a", bucket_limit=1))
+            for run in storage.get_runs(
+                bucket=TagBucket(tag_key="a", tag_values=["1", "2", "3", "4"], bucket_limit=1)
+            )
         }
         assert set(runs_by_tag.keys()) == {"1", "2", "3", "4"}
         assert runs_by_tag.get("1").run_id == one.run_id
@@ -1238,7 +1247,7 @@ class TestRunStorage:
             run.tags.get("a"): run
             for run in storage.get_runs(
                 filters=PipelineRunsFilter(pipeline_name="a"),
-                limit=RunBucketLimit.by_tag("a", bucket_limit=1),
+                bucket=TagBucket(tag_key="a", tag_values=["1", "2", "3", "4"], bucket_limit=1),
             )
         }
         assert set(runs_by_tag.keys()) == {"1", "2", "3"}

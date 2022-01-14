@@ -18,7 +18,7 @@ from dagster.core.snap import (
 from dagster.daemon.types import DaemonHeartbeat
 from dagster.utils import frozendict, merge_dicts
 
-from ..pipeline_run import PipelineRun, PipelineRunsFilter, RunBucketLimit, RunRecord
+from ..pipeline_run import JobBucket, PipelineRun, PipelineRunsFilter, RunRecord, TagBucket
 from .base import RunStorage
 
 
@@ -115,22 +115,26 @@ class InMemoryRunStorage(RunStorage):
         self,
         filters: PipelineRunsFilter = None,
         cursor: str = None,
-        limit: Optional[Union[int, RunBucketLimit]] = None,
+        limit: int = None,
+        bucket: Optional[Union[JobBucket, TagBucket]] = None,
     ) -> List[PipelineRun]:
         check.opt_inst_param(filters, "filters", PipelineRunsFilter)
         check.opt_str_param(cursor, "cursor")
-        check.opt_inst_param(limit, "limit", (int, RunBucketLimit))
+        check.opt_int_param(limit, "limit")
+        check.opt_inst_param(bucket, "bucket", (JobBucket, TagBucket))
 
         matching_runs = list(filter(build_run_filter(filters), list(self._runs.values())[::-1]))
-        if not isinstance(limit, RunBucketLimit):
+        if not bucket:
             return self._slice(matching_runs, cursor=cursor, limit=limit)
 
         results = []
         bucket_counts: Dict[str, int] = defaultdict(int)
         for run in matching_runs:
-            bucket_key = run.pipeline_name if limit.is_by_job else run.tags.get(limit.tag_key)
+            bucket_key = (
+                run.pipeline_name if isinstance(bucket, JobBucket) else run.tags.get(bucket.tag_key)
+            )
             if not bucket_key or (
-                limit.bucket_limit and bucket_counts[bucket_key] >= limit.bucket_limit
+                bucket.bucket_limit and bucket_counts[bucket_key] >= bucket.bucket_limit
             ):
                 continue
             bucket_counts[bucket_key] += 1
@@ -173,9 +177,10 @@ class InMemoryRunStorage(RunStorage):
     def get_run_records(
         self,
         filters: PipelineRunsFilter = None,
-        limit: Optional[Union[int, RunBucketLimit]] = None,
+        limit: int = None,
         order_by: str = None,
         ascending: bool = False,
+        bucket: Optional[Union[JobBucket, TagBucket]] = None,
     ) -> List[RunRecord]:
         raise NotImplementedError("In memory run storage does not track timestamp yet.")
 
