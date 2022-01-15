@@ -12,7 +12,7 @@ from dagster import (
     pipeline,
     solid,
 )
-from dagster.core.definitions.event_metadata import DagsterInvalidEventMetadata
+from dagster.core.definitions.event_metadata import DagsterInvalidEventMetadata, EventMetadataEntry
 
 
 def solid_events_for_type(result, solid_name, event_type):
@@ -63,26 +63,28 @@ def test_event_metadata():
     assert entry_map["python"] == PythonArtifactMetadataEntryData
 
 
-def test_unknown_metadata_value():
-    @solid(output_defs=[])
-    def the_solid(context):
-        yield AssetMaterialization(
-            asset_key="foo",
-            metadata={"bad": context.instance},
+def test_bad_table_schema_metadata_value():
+
+    with pytest.raises(DagsterInvalidEventMetadata):
+        EventMetadata.table_schema(
+            {
+                "frields": [{"name": "foo"}],
+            }
         )
 
-    @pipeline
-    def the_pipeline():
-        the_solid()
+    with pytest.raises(DagsterInvalidEventMetadata):
+        EventMetadata.table_schema(
+            {
+                "fields": [{"noname": "foo"}],
+            }
+        )
 
-    with pytest.raises(DagsterInvalidEventMetadata) as exc_info:
-        execute_pipeline(the_pipeline)
-
-    assert str(exc_info.value) == (
-        'Could not resolve the metadata value for "bad" to a known type. '
-        "Its type was <class 'dagster.core.instance.DagsterInstance'>. "
-        "Consider wrapping the value with the appropriate EventMetadata type."
-    )
+    with pytest.raises(DagsterInvalidEventMetadata):
+        EventMetadata.table_schema(
+            {
+                "fields": ["foo", {"name": "foo"}],
+            }
+        )
 
 
 def test_bad_json_metadata_value():

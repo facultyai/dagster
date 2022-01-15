@@ -1,22 +1,24 @@
+import typing as t
 from abc import abstractmethod
 from enum import Enum as PythonEnum
 from functools import partial
+from typing import cast
 
 from dagster import check
 from dagster.builtins import BuiltinEnum
 from dagster.config.config_type import Array, ConfigType
 from dagster.config.config_type import Noneable as ConfigNoneable
-
+from dagster.core.definitions.event_metadata import (
+    EventMetadataEntry,
+    ParseableMetadataEntryData,
+    parse_metadata,
+)
 from dagster.core.definitions.events import TypeCheck
 from dagster.core.errors import DagsterInvalidDefinitionError, DagsterInvariantViolationError
-from dagster.core.definitions.event_metadata import EventMetadataEntry
 from dagster.serdes import whitelist_for_serdes
 
 from .builtin_config_schemas import BuiltinSchemas
 from .config_schema import DagsterTypeLoader, DagsterTypeMaterializer
-
-import typing as t
-from typing import cast
 
 if t.TYPE_CHECKING:
     from dagster.core.execution.context.system import StepExecutionContext, TypeCheckContext
@@ -93,8 +95,9 @@ class DagsterType:
         materializer: t.Optional[DagsterTypeMaterializer] = None,
         required_resource_keys: t.Set[str] = None,
         kind: DagsterTypeKind = DagsterTypeKind.REGULAR,
-        typing_type: t.Optional[t.Type] = None,
+        typing_type: t.Any = None,
         metadata_entries: t.Optional[t.List[EventMetadataEntry]] = None,
+        metadata: t.Optional[t.Dict[str, ParseableMetadataEntryData]] = None,
     ):
         check.opt_str_param(key, "key")
         check.opt_str_param(name, "name")
@@ -140,10 +143,14 @@ class DagsterType:
 
         self.typing_type = typing_type
 
-        self._metadata_entries = cast(
-            t.List[EventMetadataEntry],
-            check.opt_list_param(metadata_entries, "metadata_entries", of_type=EventMetadataEntry),
+        metadata_entries = check.opt_list_param(
+            metadata_entries, "metadata_entries", of_type=EventMetadataEntry
         )
+        metadata = check.opt_dict_param(metadata, "metadata", key_type=str)
+        # self._metadata_entries=cast(
+        #     t.List[EventMetadataEntry], parse_metadata(metadata, metadata_entries)
+        # ),
+        self._metadata_entries = parse_metadata(metadata, metadata_entries)
 
     def type_check(self, context: "TypeCheckContext", value: object) -> TypeCheck:
         retval = self._type_check_fn(context, value)
@@ -172,7 +179,7 @@ class DagsterType:
 
     @property
     def metadata_entries(self) -> t.List[EventMetadataEntry]:
-        return self._metadata_entries
+        return self._metadata_entries  # type: ignore
 
     @property
     def display_name(self) -> str:
@@ -257,7 +264,7 @@ def _validate_type_check_fn(fn: t.Callable, name: t.Optional[str]) -> bool:
 
 
 class BuiltinScalarDagsterType(DagsterType):
-    def __init__(self, name: str, type_check_fn: TypeCheckFn, typing_type: t.Type, *args, **kwargs):
+    def __init__(self, name: str, type_check_fn: TypeCheckFn, typing_type: t.Type, **kwargs):
         super(BuiltinScalarDagsterType, self).__init__(
             key=name,
             name=name,
@@ -265,7 +272,6 @@ class BuiltinScalarDagsterType(DagsterType):
             type_check_fn=type_check_fn,
             is_builtin=True,
             typing_type=typing_type,
-            *args,
             **kwargs,
         )
 
@@ -516,16 +522,16 @@ class PythonObjectDagsterType(DagsterType):
             self.type_str = "Union[{}]".format(
                 ", ".join(python_type.__name__ for python_type in python_type)
             )
-            typing_type = t.Union[python_type]
+            typing_type = object
         else:
-            self.python_type = check.type_param(python_type, "python_type")
+            self.python_type = check.type_param(python_type, "python_type")  # type: ignore
             self.type_str = python_type.__name__
-        typing_type = python_type
+            typing_type = python_type
 
         # We have to set these here rather than in the superclass constructor to make sure
         # `display_name` is defined.
         self._name = check.opt_str_param(name, "name", self.type_str)
-        self.key = check.opt_str_param(key, "key", name)
+        self.key = check.opt_str_param(key, "key", name)  # type: ignore
         super(PythonObjectDagsterType, self).__init__(
             key=key,
             name=name,
@@ -642,7 +648,7 @@ class ListType(DagsterType):
             kind=DagsterTypeKind.LIST,
             type_check_fn=self.type_check_method,
             loader=_create_list_input_schema(inner_type),
-            typing_type=t.List[inner_type.typing_type],
+            typing_type=t.List[inner_type.typing_type],  # type: ignore
         )
 
     @property
@@ -698,7 +704,7 @@ def _List(inner_type):
 
 
 class Stringish(DagsterType):
-    def __init__(self, key: t.Optional[str] = None, name: t.Optional[str] = None, **kwargs: object):
+    def __init__(self, key: t.Optional[str] = None, name: t.Optional[str] = None, **kwargs):
         name = check.opt_str_param(name, "name", type(self).__name__)
         key = check.opt_str_param(key, "key", name)
         super(Stringish, self).__init__(

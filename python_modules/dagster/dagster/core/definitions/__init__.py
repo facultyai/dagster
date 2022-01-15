@@ -31,7 +31,6 @@ from .dependency import (
     SolidOutputHandle,
 )
 from .event_metadata import (
-    ColumnarSchemaMetadataEntryData,
     EventMetadata,
     EventMetadataEntry,
     FloatMetadataEntryData,
@@ -41,6 +40,7 @@ from .event_metadata import (
     PathMetadataEntryData,
     PythonArtifactMetadataEntryData,
     TableMetadataEntryData,
+    TableSchemaMetadataEntryData,
     TextMetadataEntryData,
     UrlMetadataEntryData,
 )

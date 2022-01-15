@@ -1,9 +1,9 @@
-from dagster_graphql.implementation.events import iterate_metadata_entries
-from dagster_graphql.schema.logs.events import GrapheneEventMetadataEntry
 import graphene
 from dagster import check
 from dagster.core.snap import PipelineSnapshot
 from dagster.core.types.dagster_type import DagsterTypeKind
+from dagster_graphql.implementation.events import iterate_metadata_entries
+from dagster_graphql.schema.logs.events import GrapheneEventMetadataEntry
 
 from .config_types import GrapheneConfigType, to_config_type
 from .errors import (
@@ -87,6 +87,7 @@ class GrapheneDagsterType(graphene.Interface):
 
     class Meta:
         name = "DagsterType"
+
 
 class GrapheneRegularDagsterType(graphene.ObjectType):
     class Meta:

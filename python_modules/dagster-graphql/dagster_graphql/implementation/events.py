@@ -1,10 +1,7 @@
 from math import isnan
 
-from dagster_graphql.schema.logs.events import GrapheneEventColumnarSchemaMetadataEntry, GrapheneEventTableMetadataEntry
-
 from dagster import check, seven
 from dagster.core.definitions.event_metadata import (
-    ColumnarSchemaMetadataEntryData,
     DagsterAssetMetadataEntryData,
     DagsterPipelineRunMetadataEntryData,
     EventMetadataEntry,
@@ -15,12 +12,17 @@ from dagster.core.definitions.event_metadata import (
     PathMetadataEntryData,
     PythonArtifactMetadataEntryData,
     TableMetadataEntryData,
+    TableSchemaMetadataEntryData,
     TextMetadataEntryData,
     UrlMetadataEntryData,
 )
 from dagster.core.events import DagsterEventType
 from dagster.core.events.log import EventLogEntry
 from dagster.core.execution.plan.objects import StepFailureData
+from dagster_graphql.schema.logs.events import (
+    GrapheneEventTableMetadataEntry,
+    GrapheneEventTableSchemaMetadataEntry,
+)
 
 MAX_INT = 2147483647
 MIN_INT = -2147483648
@@ -38,7 +40,7 @@ def iterate_metadata_entries(metadata_entries):
         GrapheneEventUrlMetadataEntry,
         GrapheneEventPipelineRunMetadataEntry,
         GrapheneEventAssetMetadataEntry,
-        GrapheneEventColumnarSchemaMetadataEntry,
+        GrapheneEventTableSchemaMetadataEntry,
         GrapheneEventTableMetadataEntry,
     )
 
@@ -124,8 +126,8 @@ def iterate_metadata_entries(metadata_entries):
                 description=metadata_entry.description,
                 assetKey=metadata_entry.entry_data.asset_key,
             )
-        elif isinstance(metadata_entry.entry_data, ColumnarSchemaMetadataEntryData):
-            yield GrapheneEventColumnarSchemaMetadataEntry(
+        elif isinstance(metadata_entry.entry_data, TableSchemaMetadataEntryData):
+            yield GrapheneEventTableSchemaMetadataEntry(
                 label=metadata_entry.label,
                 description=metadata_entry.description,
                 jsonString=seven.json.dumps(metadata_entry.entry_data.schema),
