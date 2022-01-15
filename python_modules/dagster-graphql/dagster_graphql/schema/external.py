@@ -189,6 +189,11 @@ class GrapheneRepository(graphene.ObjectType):
         from dagster.core.storage.tags import SCHEDULE_NAME_TAG
 
         schedules = self._repository.get_external_schedules()
+
+        # Instantiates a batch tag run loader, to be passed to all of the repository schedules, so
+        # that all of their runs can be fetched in a batched database request. This can be done
+        # because all runs for a schedule will have thier schedule name as the value for the
+        # SCHEDULE_NAME_TAG.
         batch_run_loader = BatchTagRunLoader(
             graphene_info, SCHEDULE_NAME_TAG, [schedule.name for schedule in schedules]
         )
@@ -215,6 +220,11 @@ class GrapheneRepository(graphene.ObjectType):
         from dagster.core.storage.tags import SENSOR_NAME_TAG
 
         sensors = self._repository.get_external_sensors()
+
+        # Instantiates a batch tag run loader, to be passed to all of the repository sensors, so
+        # that all of their runs can be fetched in a batched database request. This can be done
+        # because all runs for a sensor will have thier sensor name as the value for the
+        # SENSOR_NAME_TAG.
         batch_run_loader = BatchTagRunLoader(
             graphene_info, SENSOR_NAME_TAG, [sensor.name for sensor in sensors]
         )
@@ -238,8 +248,10 @@ class GrapheneRepository(graphene.ObjectType):
         )
 
     def resolve_pipelines(self, graphene_info):
-
         external_pipelines = self._repository.get_all_external_pipelines()
+
+        # Instantiates a batch job run loader, to be passed to all of the repository sensors, so
+        # that all of their runs can be fetched in a batched database request.
         batch_run_loader = BatchJobRunLoader(graphene_info, [x.name for x in external_pipelines])
         return [
             GraphenePipeline(pipeline, batch_run_loader)
