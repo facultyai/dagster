@@ -3,7 +3,7 @@ def types():
     from .events import (
         GrapheneDisplayableEvent,
         GrapheneEngineEvent,
-        GrapheneEventColumnarSchemaMetadataEntry,
+        GrapheneEventTableSchemaMetadataEntry,
         GrapheneEventTableMetadataEntry,
         GrapheneEventFloatMetadataEntry,
         GrapheneEventIntMetadataEntry,
@@ -63,7 +63,7 @@ def types():
         GrapheneEngineEvent,
         GrapheneEventPipelineRunMetadataEntry,
         GrapheneEventAssetMetadataEntry,
-        GrapheneEventColumnarSchemaMetadataEntry,
+        GrapheneEventTableSchemaMetadataEntry,
         GrapheneEventTableMetadataEntry,
         GrapheneEventFloatMetadataEntry,
         GrapheneEventIntMetadataEntry,

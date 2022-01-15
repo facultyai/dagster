@@ -159,7 +159,7 @@ class GrapheneExecutionStepSkippedEvent(graphene.ObjectType):
         name = "ExecutionStepSkippedEvent"
 
 
-class GrapheneEventColumnarSchemaMetadataEntry(graphene.ObjectType):
+class GrapheneEventTableSchemaMetadataEntry(graphene.ObjectType):
     # NOTE: JSON is the serialization format for the table (list of
     # dictionaries). Don't confuse with `EventJsonMetadataEntry`-- this type is
     # used only for JSON with a root dictionary.
@@ -167,7 +167,7 @@ class GrapheneEventColumnarSchemaMetadataEntry(graphene.ObjectType):
 
     class Meta:
         interfaces = (GrapheneEventMetadataEntry,)
-        name = "EventColumnarSchemaMetadataEntry"
+        name = "EventTableSchemaMetadataEntry"
 
 
 class GrapheneEventPathMetadataEntry(graphene.ObjectType):
