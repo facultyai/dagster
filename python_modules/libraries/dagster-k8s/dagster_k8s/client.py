@@ -258,20 +258,22 @@ class DagsterKubernetesClient:
             # we need to read the status off of.
             status = None
 
-            def _get_job_status():
+            def _get_job():
                 job = self.batch_api.read_namespaced_job_status(job_name, namespace=namespace)
-                return job.status
+                return job
 
-            status = k8s_api_retry(
-                _get_job_status, max_retries=3, timeout=wait_time_between_attempts
+            job = k8s_api_retry(
+                _get_job, max_retries=3, timeout=wait_time_between_attempts
             )
+
+            status = job.status
 
             # status.succeeded represents the number of pods which reached phase Succeeded.
             if status.succeeded == num_pods_to_wait_for:
                 break
 
             # status.failed represents the number of pods which reached phase Failed.
-            if status.failed and status.failed > 0:
+            if status.failed and status.failed == job.spec.backoff_limit:
                 raise DagsterK8sError(
                     "Encountered failed job pods for job {job_name} with status: {status}, "
                     "in namespace {namespace}".format(
