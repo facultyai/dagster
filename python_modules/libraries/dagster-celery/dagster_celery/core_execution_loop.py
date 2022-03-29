@@ -78,7 +78,7 @@ def core_celery_execution_loop(pipeline_context, execution_plan, step_execution_
             ):
                 if result.ready():
                     try:
-                        step_events = result.get()
+                        step_events = result.get(timeout=8)
                     except TaskRevokedError:
                         step_events = []
                         yield DagsterEvent.engine_event(
@@ -92,7 +92,7 @@ def core_celery_execution_loop(pipeline_context, execution_plan, step_execution_
                     except Exception:
                         # We will want to do more to handle the exception here.. maybe subclass Task
                         # Certainly yield an engine or pipeline event
-                        step_events = []
+                        step_events = [] # TODO
                         step_errors[step_key] = serializable_error_info_from_exc_info(
                             sys.exc_info()
                         )
